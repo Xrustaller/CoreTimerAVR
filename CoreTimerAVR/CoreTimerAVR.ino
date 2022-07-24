@@ -18,7 +18,7 @@
 #define SIM_ON1 0b1100100
 
 #define BUS_ID 1
-#define PIN_REDE A1
+#define PIN_REDE A2
 
 #include <Wire.h>
 #include <GyverButton.h>
