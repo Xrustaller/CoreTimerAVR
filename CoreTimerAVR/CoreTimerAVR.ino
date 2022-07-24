@@ -18,6 +18,7 @@
 #define SIM_ON1 0b1100100
 
 #define BUS_ID 1
+#define PIN_REDE A1
 
 #include <Wire.h>
 #include <GyverButton.h>
@@ -28,7 +29,7 @@ GButton button_start(BTN_PIN_START_RESET);
 GButton button_plus(BTN_PIN_PLUS);
 GButton button_minus(BTN_PIN_MINUS);
 
-Modbus bus(BUS_ID, 0, 0);
+Modbus bus(BUS_ID, 0, PIN_REDE);
 int8_t state = 0;
 
 DTM1650 display;
