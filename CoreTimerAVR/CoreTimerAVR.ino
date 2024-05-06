@@ -4,9 +4,12 @@
 #define BTN_PIN_START_RESET 2  // Кнопка СТАРТ-СТОП
 #define BTN_PIN_PLUS 3  // Кнопка ПЛЮС
 #define BTN_PIN_MINUS 4  // Кнопка МИНУС
+
 #define PIN_AUTO 5  // Переключатель включения по включению таймера (Включение: подтянуть к +5V, Выключение: Подтянуть к GND)
+
 #define PIN_T1 6  // От переключателя выбора (при выборе T1 - замыкание на землю) 
 #define PIN_T2 7  // От переключателя выбора (при выборе T2 - замыкание на землю)
+
 #define PIN_T1_ON 8  // От секундомера T1 при его включении (Сделать внешнюю подтяжку на землю, когда таймер запущен должен подаваться сигнал +5V )
 #define PIN_T2_ON 11  // От таймера T2 при его включении (Сделать внешнюю подтяжку на землю, когда таймер запущен должен подаваться сигнал +5V )
 
@@ -18,7 +21,6 @@
 #define SIM_ON1 0b1100100
 
 #define BUS_ID 1
-#define PIN_REDE 12
 
 #include <Wire.h>
 #include <GyverButton.h>
@@ -29,7 +31,7 @@ GButton button_start(BTN_PIN_START_RESET);
 GButton button_plus(BTN_PIN_PLUS);
 GButton button_minus(BTN_PIN_MINUS);
 
-Modbus bus(BUS_ID, 0, PIN_REDE);
+Modbus bus(BUS_ID);
 int8_t state = 0;
 
 DTM1650 display;
@@ -40,7 +42,7 @@ bool bool_sim = false;
 bool is_start = false;
 bool is_auto_start = false;
 
-uint16_t temp[2] = {0, 5};
+uint16_t temp[2] = { 0, 5 };
 
 void draw() {
 
@@ -66,7 +68,7 @@ void draw() {
 }
 
 void setup() {
-    bus.begin(19200);
+    bus.begin(9600);
     Wire.begin();
 
     button_start.setClickTimeout(50);
@@ -88,96 +90,100 @@ void button_tick() {
     button_start.tick();
     button_plus.tick();
     button_minus.tick();
+}
 
+void timer_tick()
+{
     bitWrite(temp[0], 0, digitalRead(PIN_AUTO));
     bitWrite(temp[0], 1, !digitalRead(PIN_T1));
     bitWrite(temp[0], 2, !digitalRead(PIN_T2));
     bitWrite(temp[0], 5, digitalRead(PIN_T1_ON));
     bitWrite(temp[0], 6, digitalRead(PIN_T2_ON));
 
+    // Таймер запущен и зажата кнопка стоп
+    if (is_start && button_start.isHolded())
+    {
+        tone(BEEP_PIN, 500, 1000);
+        is_start = false;
+        bool_sim = false;
+        bitWrite(temp[0], 4, false);
+        bitWrite(temp[0], 7, false);
+        timer_sim = millis();
+        // Остановка эксперимента
+        return;
+    }
+    // Таймер запущен автоматически и выключили таймер
+    if (is_auto_start && (digitalRead(PIN_T1) || !digitalRead(PIN_T1_ON)) && (digitalRead(PIN_T2) || !digitalRead(PIN_T2_ON))) {
+        // Если таймеры выключены
+        tone(BEEP_PIN, 500, 1000);
+        is_auto_start = false;
+        bool_sim = false;
+        bitWrite(temp[0], 3, false);
+        bitWrite(temp[0], 7, false);
+        timer_sim = millis();
+        // Остановка эксперимента
+        button_start.resetStates();
+        return;
+    }
 
-    if (!is_start && !is_auto_start) { // Если ничего не запущено
-        if (digitalRead(PIN_AUTO)) {
-            // Включен авто-режим
-            button_start.resetStates();
-            if ((!digitalRead(PIN_T1) && digitalRead(PIN_T1_ON)) || (!digitalRead(PIN_T2) && digitalRead(PIN_T2_ON))) {
-                // Включен один из таймеров
-                is_auto_start = true;
-                bitWrite(temp[0], 3, true);
-                bitWrite(temp[0], 7, true);
-                tone(BEEP_PIN, 5000, 1000);
-                // Запуск эксперимента
-            }
+    // Если ничего не запущено
 
-        	// Запустился таймер и включен авто-режим
-        }
-    	else {
-            if (button_start.isHolded()) {
-                // Нажата кнопка запуска
-                is_start = true;
-                bitWrite(temp[0], 4, true);
-                bitWrite(temp[0], 7, true);
-                tone(BEEP_PIN, 5000, 1000);
-	            // Запуск эксперимента
-            }
-	    }
-
-        if (button_plus.isClick()) {
+    if (button_plus.isClick()) {
 #if MAX_TIME == 0
-            if (temp[1] < 999) {
-                temp[1]++;
-            }
+        if (temp[1] < 999) {
+            temp[1]++;
+        }
 #else
-            if (temp[1] < MAX_TIME) {
-                temp[1]++;
-            }
+        if (temp[1] < MAX_TIME) {
+            temp[1]++;
+        }
 #endif
-        }
+        return;
+    }
 
-        if (button_minus.isClick()) {
-            if (temp[1] > MIN_TIME) {
-                temp[1]--;
-            }
-            if (temp[1] < 10) {
-                display.send_digit(0, 2);
-            }
-            else if (temp[1] < 100) {
-                display.send_digit(0, 1);
-            }
+    if (button_minus.isClick()) {
+        if (temp[1] > MIN_TIME) {
+            temp[1]--;
         }
+        if (temp[1] < 10) {
+            display.send_digit(0, 2);
+        }
+        else if (temp[1] < 100) {
+            display.send_digit(0, 1);
+        }
+        return;
     }
-    else if (is_auto_start) { // Если запущено автоматически
-        if ((digitalRead(PIN_T1) || !digitalRead(PIN_T1_ON)) && (digitalRead(PIN_T2) || !digitalRead(PIN_T2_ON)) ) {
-            // Если таймеры выключены
-            tone(BEEP_PIN, 5000, 1000);
-            is_auto_start = false;
-            bool_sim = false;
-            bitWrite(temp[0], 3, false);
-            bitWrite(temp[0], 7, false);
-            timer_sim = millis();
-            // Остановка эксперимента
-            button_start.resetStates();
+
+    // Автоматический запуск
+    if (digitalRead(PIN_AUTO)) {
+        button_start.resetStates();
+        if ((!digitalRead(PIN_T1) && digitalRead(PIN_T1_ON)) || (!digitalRead(PIN_T2) && digitalRead(PIN_T2_ON))) {
+            // Включен один из таймеров
+            is_auto_start = true;
+            bitWrite(temp[0], 3, true);
+            bitWrite(temp[0], 7, true);
+            tone(BEEP_PIN, 500, 1000);
+            // Запуск эксперимента
         }
+        return;
     }
-    else if (is_start) { // Если запущено по кнопке
-        if (button_start.isHolded()) {
-            // Кнопка зажата
-            tone(BEEP_PIN, 5000, 1000);
-            is_start = false;
-            bool_sim = false;
-            bitWrite(temp[0], 4, false);
-            bitWrite(temp[0], 7, false);
-            timer_sim = millis();
-            // Остановка эксперимента
-        }
+    // Запуск по кнопке
+    if (button_start.isHolded()) {
+        is_start = true;
+        bitWrite(temp[0], 4, true);
+        bitWrite(temp[0], 7, true);
+        tone(BEEP_PIN, 500, 1000);
+        // Запуск эксперимента
     }
 }
 
 void loop() {
 
-	button_tick();
+    button_tick();
 
-	state = bus.poll(temp, 2);
+    timer_tick();
+
+    state = bus.poll(temp, 2);
 
     draw();
 }
