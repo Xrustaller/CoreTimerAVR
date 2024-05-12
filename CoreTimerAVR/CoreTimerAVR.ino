@@ -22,6 +22,8 @@
 
 #define BUS_ID 1
 
+#define DEBUG false
+
 #include <Wire.h>
 #include <GyverButton.h>
 #include <DTM1650.h>
@@ -31,7 +33,7 @@ GButton button_start(BTN_PIN_START_RESET);
 GButton button_plus(BTN_PIN_PLUS);
 GButton button_minus(BTN_PIN_MINUS);
 
-Modbus bus(BUS_ID);
+Modbus bus(BUS_ID, 0);
 int8_t state = 0;
 
 DTM1650 display;
@@ -47,28 +49,47 @@ uint16_t temp[2] = { 0, 5 };
 void draw() {
 
     if (millis() - timer_sim > 400) {
-        display.write_void_num(temp[1]);
 
+#if DEBUG
+        Serial.print("Draw display: ");
+#endif
         if (is_start || is_auto_start) {
             timer_sim = millis();
             display.send_digit(0x00, 0);
             if (bool_sim) {
                 display.send_digit(SIM_ON0, 0);
+#if DEBUG
+                Serial.print("N");
+#endif
             }
             else {
                 display.send_digit(SIM_ON1, 0);
+#if DEBUG
+                Serial.print("И");
+#endif
             }
             bool_sim = !bool_sim;
         }
         else
         {
             display.send_digit(SIM_WAIT, 0);
+#if DEBUG
+            Serial.print("H");
+#endif
         }
+        display.write_void_num(temp[1]);
+#if DEBUG
+        Serial.println(temp[1]);
+#endif
     }
 }
 
 void setup() {
+#if DEBUG
+    Serial.begin(19200);
+#else
     bus.begin(9600);
+#endif
     Wire.begin();
 
     button_start.setClickTimeout(50);
@@ -103,6 +124,10 @@ void timer_tick()
     // Таймер запущен и зажата кнопка стоп
     if (is_start && button_start.isHolded())
     {
+
+#if DEBUG
+        Serial.println("Button Start isHolded, STOP EXPERIMENT");
+#endif
         tone(BEEP_PIN, 500, 1000);
         is_start = false;
         bool_sim = false;
@@ -115,6 +140,9 @@ void timer_tick()
     // Таймер запущен автоматически и выключили таймер
     if (is_auto_start && (digitalRead(PIN_T1) || !digitalRead(PIN_T1_ON)) && (digitalRead(PIN_T2) || !digitalRead(PIN_T2_ON))) {
         // Если таймеры выключены
+#if DEBUG
+        Serial.println("AUTO STOP EXPERIMENT");
+#endif
         tone(BEEP_PIN, 500, 1000);
         is_auto_start = false;
         bool_sim = false;
@@ -138,6 +166,9 @@ void timer_tick()
             temp[1]++;
         }
 #endif
+#if DEBUG
+        Serial.println("Button Plus Click " + temp[1]);
+#endif
         return;
     }
 
@@ -151,14 +182,20 @@ void timer_tick()
         else if (temp[1] < 100) {
             display.send_digit(0, 1);
         }
+#if DEBUG
+        Serial.println("Button Minus Click " + temp[1]);
+#endif
         return;
     }
 
     // Автоматический запуск
     if (digitalRead(PIN_AUTO)) {
-        button_start.resetStates();
+
         if ((!digitalRead(PIN_T1) && digitalRead(PIN_T1_ON)) || (!digitalRead(PIN_T2) && digitalRead(PIN_T2_ON))) {
             // Включен один из таймеров
+#if DEBUG
+            Serial.println("AUTO START EXPERIMENT");
+#endif
             is_auto_start = true;
             bitWrite(temp[0], 3, true);
             bitWrite(temp[0], 7, true);
@@ -169,6 +206,9 @@ void timer_tick()
     }
     // Запуск по кнопке
     if (button_start.isHolded()) {
+#if DEBUG
+        Serial.println("Button Start isHolded, START EXPERIMENT");
+#endif
         is_start = true;
         bitWrite(temp[0], 4, true);
         bitWrite(temp[0], 7, true);
@@ -183,7 +223,12 @@ void loop() {
 
     timer_tick();
 
+#if !DEBUG
     state = bus.poll(temp, 2);
+#endif
 
     draw();
+#if DEBUG
+    Serial.println("Tick end.");
+#endif
 }
