@@ -132,6 +132,7 @@ void timer_tick() {
 			button_start.resetStates();
 		}
         delay(20);
+        return;
 	}
 
     // Если ничего не запущено
