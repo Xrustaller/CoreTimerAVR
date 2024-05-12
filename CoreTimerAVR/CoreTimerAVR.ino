@@ -10,8 +10,8 @@
 #define PIN_T1 6  // От переключателя выбора (при выборе T1 - замыкание на землю) 
 #define PIN_T2 7  // От переключателя выбора (при выборе T2 - замыкание на землю)
 
-#define PIN_T1_ON 8  // От секундомера T1 при его включении (Сделать внешнюю подтяжку на землю, когда таймер запущен должен подаваться сигнал +5V )
-#define PIN_T2_ON 11  // От таймера T2 при его включении (Сделать внешнюю подтяжку на землю, когда таймер запущен должен подаваться сигнал +5V )
+#define PIN_T1_ON 8  // От секундомера T1 при его включении (Сделать внешнюю подтяжку на +5V, когда таймер запущен должна быть подтяжка на землю)
+#define PIN_T2_ON 11  // От таймера T2 при его включении (Сделать внешнюю подтяжку на +5V, когда таймер запущен должна быть подтяжка на землю)
 
 #define BEEP_PIN 9  // Пин пьезо (при выборе 9 пина, 10 - недоступен из-за шим)
 
@@ -121,7 +121,7 @@ void timer_tick() {
 
 	if (is_auto_start) {
 		// Если выключили таймер 1 или 2
-		if (!digitalRead(PIN_T1_ON) || !digitalRead(PIN_T2_ON)) {
+		if ((!t1_pin || t1_on_pin) && (!t2_pin || t2_on_pin)) {
 			tone(BEEP_PIN, 500, 1000);
 			is_auto_start = false;
 			bool_sim = false;
@@ -134,6 +134,30 @@ void timer_tick() {
         delay(20);
 		return;
 	}
+
+    // Если ничего не запущено
+    if (button_plus.isClick()) {
+#if MAX_TIME == 0
+        if (temp[1] < 999) {
+            temp[1]++;
+        }
+#else
+        if (temp[1] < MAX_TIME) {
+            temp[1]++;
+        }
+#endif
+    }
+    else if (button_minus.isClick()) {
+        if (temp[1] > MIN_TIME) {
+            temp[1]--;
+        }
+        if (temp[1] < 10) {
+            display.send_digit(0, 2);
+        }
+        else if (temp[1] < 100) {
+            display.send_digit(0, 1);
+        }
+    }
 
     // Автоматический запуск
     if (auto_pin) {
@@ -159,31 +183,6 @@ void timer_tick() {
         delay(20);
         return;
     }
-
-    // Если ничего не запущено
-    if (button_plus.isClick()) {
-#if MAX_TIME == 0
-        if (temp[1] < 999) {
-            temp[1]++;
-        }
-#else
-        if (temp[1] < MAX_TIME) {
-            temp[1]++;
-        }
-#endif
-    }
-    else if (button_minus.isClick()) {
-        if (temp[1] > MIN_TIME) {
-            temp[1]--;
-        }
-        if (temp[1] < 10) {
-            display.send_digit(0, 2);
-        }
-        else if (temp[1] < 100) {
-            display.send_digit(0, 1);
-        }
-        return;
-    }    
 }
 
 void loop() {
