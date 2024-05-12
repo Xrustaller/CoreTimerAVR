@@ -22,8 +22,6 @@
 
 #define BUS_ID 1
 
-#define DEBUG false
-
 #include <Wire.h>
 #include <GyverButton.h>
 #include <DTM1650.h>
@@ -49,47 +47,28 @@ uint16_t temp[2] = { 0, 5 };
 void draw() {
 
     if (millis() - timer_sim > 400) {
+        display.write_void_num(temp[1]);
 
-#if DEBUG
-        Serial.print("Draw display: ");
-#endif
         if (is_start || is_auto_start) {
             timer_sim = millis();
             display.send_digit(0x00, 0);
             if (bool_sim) {
                 display.send_digit(SIM_ON0, 0);
-#if DEBUG
-                Serial.print("N");
-#endif
             }
             else {
                 display.send_digit(SIM_ON1, 0);
-#if DEBUG
-                Serial.print("И");
-#endif
             }
             bool_sim = !bool_sim;
         }
         else
         {
             display.send_digit(SIM_WAIT, 0);
-#if DEBUG
-            Serial.print("H");
-#endif
         }
-        display.write_void_num(temp[1]);
-#if DEBUG
-        Serial.println(temp[1]);
-#endif
     }
 }
 
 void setup() {
-#if DEBUG
-    Serial.begin(19200);
-#else
     bus.begin(9600);
-#endif
     Wire.begin();
 
     button_start.setClickTimeout(50);
@@ -113,49 +92,75 @@ void button_tick() {
     button_minus.tick();
 }
 
-void timer_tick()
-{
-    bitWrite(temp[0], 0, digitalRead(PIN_AUTO));
-    bitWrite(temp[0], 1, !digitalRead(PIN_T1));
-    bitWrite(temp[0], 2, !digitalRead(PIN_T2));
-    bitWrite(temp[0], 5, digitalRead(PIN_T1_ON));
-    bitWrite(temp[0], 6, digitalRead(PIN_T2_ON));
+void timer_tick() {
+	const bool auto_pin = static_cast<bool>(digitalRead(PIN_AUTO));
+    const bool t1_pin = !digitalRead(PIN_T1); // Инвертирован потому что включается нулем
+    const bool t2_pin = !digitalRead(PIN_T2); // Инвертирован потому что включается нулем
+    const bool t1_on_pin = !digitalRead(PIN_T1_ON); // Инвертирован потому что включается нулем
+    const bool t2_on_pin = !digitalRead(PIN_T2_ON); // Инвертирован потому что включается нулем
 
-    // Таймер запущен и зажата кнопка стоп
-    if (is_start && button_start.isHolded())
-    {
+    bitWrite(temp[0], 0, auto_pin);
+    bitWrite(temp[0], 1, t1_pin);
+    bitWrite(temp[0], 2, t2_pin);
+    bitWrite(temp[0], 5, t1_on_pin);
+    bitWrite(temp[0], 6, t2_on_pin);
 
-#if DEBUG
-        Serial.println("Button Start isHolded, STOP EXPERIMENT");
-#endif
-        tone(BEEP_PIN, 500, 1000);
-        is_start = false;
-        bool_sim = false;
-        bitWrite(temp[0], 4, false);
-        bitWrite(temp[0], 7, false);
-        timer_sim = millis();
-        // Остановка эксперимента
+    if (is_start) {
+	    if (button_start.isHolded()) {
+            tone(BEEP_PIN, 500, 1000);
+            is_start = false;
+            bool_sim = false;
+            bitWrite(temp[0], 4, false);
+            bitWrite(temp[0], 7, false);
+            timer_sim = millis();
+            // Остановка эксперимента
+	    }
+        delay(20);
         return;
     }
-    // Таймер запущен автоматически и выключили таймер
-    if (is_auto_start && (digitalRead(PIN_T1) || !digitalRead(PIN_T1_ON)) && (digitalRead(PIN_T2) || !digitalRead(PIN_T2_ON))) {
-        // Если таймеры выключены
-#if DEBUG
-        Serial.println("AUTO STOP EXPERIMENT");
-#endif
+
+	if (is_auto_start) {
+		// Если выключили таймер 1 или 2
+		if (!digitalRead(PIN_T1_ON) || !digitalRead(PIN_T2_ON)) {
+			tone(BEEP_PIN, 500, 1000);
+			is_auto_start = false;
+			bool_sim = false;
+			bitWrite(temp[0], 3, false);
+			bitWrite(temp[0], 7, false);
+			timer_sim = millis();
+			// Остановка эксперимента
+			button_start.resetStates();
+		}
+        delay(20);
+		return;
+	}
+
+    // Автоматический запуск
+    if (auto_pin) {
+        if ((t1_pin && t1_on_pin) || (t2_pin && t2_on_pin)) {
+            // Включен один из таймеров
+            is_auto_start = true;
+            bitWrite(temp[0], 3, true);
+            bitWrite(temp[0], 7, true);
+            tone(BEEP_PIN, 500, 1000);
+            // Запуск эксперимента
+        }
+        delay(20);
+        return;
+    }
+
+    // Запуск по кнопке
+    if (button_start.isHolded()) {
+        is_start = true;
+        bitWrite(temp[0], 4, true);
+        bitWrite(temp[0], 7, true);
         tone(BEEP_PIN, 500, 1000);
-        is_auto_start = false;
-        bool_sim = false;
-        bitWrite(temp[0], 3, false);
-        bitWrite(temp[0], 7, false);
-        timer_sim = millis();
-        // Остановка эксперимента
-        button_start.resetStates();
+        // Запуск эксперимента
+        delay(20);
         return;
     }
 
     // Если ничего не запущено
-
     if (button_plus.isClick()) {
 #if MAX_TIME == 0
         if (temp[1] < 999) {
@@ -166,13 +171,8 @@ void timer_tick()
             temp[1]++;
         }
 #endif
-#if DEBUG
-        Serial.println("Button Plus Click " + temp[1]);
-#endif
-        return;
     }
-
-    if (button_minus.isClick()) {
+    else if (button_minus.isClick()) {
         if (temp[1] > MIN_TIME) {
             temp[1]--;
         }
@@ -182,39 +182,8 @@ void timer_tick()
         else if (temp[1] < 100) {
             display.send_digit(0, 1);
         }
-#if DEBUG
-        Serial.println("Button Minus Click " + temp[1]);
-#endif
         return;
-    }
-
-    // Автоматический запуск
-    if (digitalRead(PIN_AUTO)) {
-
-        if ((!digitalRead(PIN_T1) && digitalRead(PIN_T1_ON)) || (!digitalRead(PIN_T2) && digitalRead(PIN_T2_ON))) {
-            // Включен один из таймеров
-#if DEBUG
-            Serial.println("AUTO START EXPERIMENT");
-#endif
-            is_auto_start = true;
-            bitWrite(temp[0], 3, true);
-            bitWrite(temp[0], 7, true);
-            tone(BEEP_PIN, 500, 1000);
-            // Запуск эксперимента
-        }
-        return;
-    }
-    // Запуск по кнопке
-    if (button_start.isHolded()) {
-#if DEBUG
-        Serial.println("Button Start isHolded, START EXPERIMENT");
-#endif
-        is_start = true;
-        bitWrite(temp[0], 4, true);
-        bitWrite(temp[0], 7, true);
-        tone(BEEP_PIN, 500, 1000);
-        // Запуск эксперимента
-    }
+    }    
 }
 
 void loop() {
@@ -223,12 +192,9 @@ void loop() {
 
     timer_tick();
 
-#if !DEBUG
     state = bus.poll(temp, 2);
-#endif
 
     draw();
-#if DEBUG
-    Serial.println("Tick end.");
-#endif
+
+    delay(20);
 }
