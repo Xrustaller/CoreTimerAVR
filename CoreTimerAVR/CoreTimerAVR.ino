@@ -121,7 +121,7 @@ void timer_tick() {
 
 	if (is_auto_start) {
 		// Если выключили таймер 1 или 2
-		if ((!t1_pin || t1_on_pin) && (!t2_pin || t2_on_pin)) {
+		if ((!t1_pin || !t1_on_pin) && (!t2_pin || !t2_on_pin)) {
 			tone(BEEP_PIN, 500, 1000);
 			is_auto_start = false;
 			bool_sim = false;
@@ -132,7 +132,6 @@ void timer_tick() {
 			button_start.resetStates();
 		}
         delay(20);
-		return;
 	}
 
     // Если ничего не запущено
@@ -159,6 +158,16 @@ void timer_tick() {
         }
     }
 
+    // Запуск по кнопке
+    if (button_start.isHolded()) {
+        is_start = true;
+        bitWrite(temp[0], 4, true);
+        bitWrite(temp[0], 7, true);
+        tone(BEEP_PIN, 500, 1000);
+        // Запуск эксперимента
+        delay(20);
+    }
+
     // Автоматический запуск
     if (auto_pin) {
         if ((t1_pin && t1_on_pin) || (t2_pin && t2_on_pin)) {
@@ -170,18 +179,6 @@ void timer_tick() {
             // Запуск эксперимента
         }
         delay(20);
-        return;
-    }
-
-    // Запуск по кнопке
-    if (button_start.isHolded()) {
-        is_start = true;
-        bitWrite(temp[0], 4, true);
-        bitWrite(temp[0], 7, true);
-        tone(BEEP_PIN, 500, 1000);
-        // Запуск эксперимента
-        delay(20);
-        return;
     }
 }
 
